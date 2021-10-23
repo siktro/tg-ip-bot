@@ -7,23 +7,19 @@ import (
 )
 
 type CommandManager struct {
-	bot    *bot.Bot
-	logger *logrus.Logger
+	logger   *logrus.Logger
+	bot      *bot.Bot
+	commands map[string]Command
 }
 
 func NewManager(bot *bot.Bot, logger *logrus.Logger) *CommandManager {
-	return &CommandManager{
+	m := &CommandManager{
 		bot:    bot,
 		logger: logger,
 	}
+	return m
 }
 
-// TODO: return errors?
-func (cm CommandManager) Handle(upd *tgbotapi.Update) {
-	switch {
-	case upd.Message != nil:
-		cm.HandleMessage(upd.Message)
-	default:
-		cm.logger.Warn("unexptected case")
-	}
+func (h *CommandManager) handleMessageType(msg *tgbotapi.Message) {
+	msg.IsCommand()
 }

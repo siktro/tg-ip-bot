@@ -1,19 +1,15 @@
 package commands
 
-import "github.com/sirupsen/logrus"
+import tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api"
 
-type Command struct {
-	exec func()
-	help string
-}
+type Command func(*tgbotapi.Message)
 
-var Commands = map[string]Command{
-	"/start": {
-		exec: func() {
-			logrus.Info("Hit!")
-		},
-		help: "some help",
-	},
+func makeCommands(h *Handler) map[string]Command {
+	m := map[string]Command{
+		"/start": nil,
+		"/ping":  h.Ping,
+	}
+	return m
 }
 
 /*

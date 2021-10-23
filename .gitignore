@@ -1,4 +1,9 @@
 .srs
-.token
 .todo
+.secret
+.env
+
 response-example.json
+
+qwe/
+qwe/**/*

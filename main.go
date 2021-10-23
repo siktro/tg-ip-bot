@@ -2,11 +2,20 @@ package main
 
 import (
 	"io/ioutil"
+	"os"
+	"regexp"
 
+	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api"
 	"github.com/siktro/tg-ip-bot/internal/bot"
-	"github.com/siktro/tg-ip-bot/internal/commands"
 	log "github.com/sirupsen/logrus"
 )
+
+// TODO: outsource into run func to catch errors easier
+func main() {
+	if err := run(); err != nil {
+		log.Fatalf("%v", err)
+	}
+}
 
 func run() error {
 	// get sysenvs, setup from docker?
@@ -17,40 +26,56 @@ func run() error {
 	// spinup command handler
 
 	// gracefuly shutdown? if any
-	token, err := readToken()
+	err := loadEnvsFromFile("./.env")
 	if err != nil {
 		return err
 	}
 
-	logger := log.New()
+	config := struct {
+		tgToken      string
+		ipstackToken string
+	}{
+		tgToken:      os.Getenv("TG_TOKEN"),
+		ipstackToken: os.Getenv("IPSTACK_TOKEN"),
+	}
+
+	// logger := log.New()
+
+	// === Start bot.
 
 	b, err := bot.NewBot(bot.Config{
-		Token:   token,
-		Timeout: 60,
-		Debug:   false,
-		Logger:  logger,
+		Token: config.tgToken,
+		Debug: true,
 	})
 
 	if err != nil {
 		return err
 	}
 
-	cm := commands.NewManager(b, logger)
+	b.Handle("/start", func(m *tgbotapi.Message) {
 
-	// spinup bot
-	return b.Serve(cm)
+	})
+
+	updateConfig := tgbotapi.NewUpdate(0)
+	return b.ListenAndServe(updateConfig)
 }
 
-// TODO: outsource into run func to catch errors easier
-func main() {
-	// A single place to exit due to errors.
-	if err := run(); err != nil {
-		log.Fatalf("%v", err)
+// TODO: remove later
+func loadEnvsFromFile(path string) error {
+	token, err := ioutil.ReadFile("./.env")
+	if err != nil {
+		return err
 	}
-}
 
-// TODO: temp, later move out as a docker envvar?
-func readToken() (string, error) {
-	token, err := ioutil.ReadFile("./.token")
-	return string(token), err
+	r, err := regexp.Compile(`(\w+)\s*=\s*(\w+)`)
+	if err != nil {
+		return err
+	}
+
+	matches := r.FindAllStringSubmatch(string(token), -1)
+	for _, m := range matches {
+		os.Setenv(m[1], m[2])
+	}
+
+	return nil
 }

@@ -4,68 +4,99 @@ package bot
 
 import (
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api"
-	log "github.com/sirupsen/logrus"
 )
 
-// refactor into separate file?
-type CommandHandler interface {
-	Handle(val *tgbotapi.Update)
-}
+type CommandHandler func(*tgbotapi.Message)
 
 type Bot struct {
-	API    *tgbotapi.BotAPI
-	logger *log.Logger
-	updCfg tgbotapi.UpdateConfig
+	*tgbotapi.BotAPI
+	cfg      *Config
+	handlers map[string]CommandHandler
 }
 
 type Config struct {
-	Token   string
-	Debug   bool
-	Timeout int
-	Offset  int
-	Limit   int
-	Logger  *log.Logger
+	// Telegram bot token.
+	Token string
+	Debug bool
+
+	// The number of goroutines processing messages.
+	WorkersLimit int
 }
 
+// NewBot creates a new Bot instance with provided configuration.
 func NewBot(cfg Config) (*Bot, error) {
 	api, err := tgbotapi.NewBotAPI(cfg.Token)
 	if err != nil {
 		return nil, err
 	}
 
-	cfg.Logger.Infof("Authorized on account %s", api.Self.UserName)
-
 	api.Debug = cfg.Debug
-	u := tgbotapi.NewUpdate(cfg.Offset)
-	u.Timeout = cfg.Timeout
-	u.Limit = cfg.Limit
 
 	return &Bot{
-		API:    api,
-		logger: cfg.Logger,
-		updCfg: u,
+		BotAPI:   api,
+		cfg:      &cfg,
+		handlers: make(map[string]CommandHandler),
 	}, nil
 }
 
-// TODO: add done channel?
-func (b Bot) Serve(handler CommandHandler) error {
-	updates, err := b.API.GetUpdatesChan(b.updCfg)
+func (b *Bot) Config() *Config {
+	return b.cfg
+}
+
+func (b *Bot) Handle(endpoint string, fn CommandHandler) {
+	b.handlers[endpoint] = fn
+}
+
+func (b *Bot) ListenAndServe(updateCfg tgbotapi.UpdateConfig) error {
+	updates, err := b.GetUpdatesChan(updateCfg)
 	if err != nil {
 		return err
 	}
 
-	// Optional: wait for updates and clear them if you don't want to handle
-	// a large backlog of old messages
-	// если во время шатдауна бота юзеры писали ему,
-	// то все сообщения сохраняются в телеге и будут переданы боту
-	// как только он станет доступным
-	// time.Sleep(time.Millisecond * 500)
-	// updates.Clear()
+	// Limit the number of goroutines.
+	limitCh := make(chan struct{}, b.cfg.WorkersLimit)
 
-	// TODO: run in goroutines?
+	// It is likely that we must close the channel,
+	// because i didn't find any close operation in the lib.
 	for update := range updates {
-		handler.Handle(&update)
+		limitCh <- struct{}{}
+		go func(upd tgbotapi.Update) {
+			b.processUpdate(upd)
+			limitCh <- struct{}{}
+		}(update)
 	}
 
 	return nil
+}
+
+func (b *Bot) processUpdate(upd tgbotapi.Update) {
+	switch {
+	case upd.Message != nil:
+		m := upd.Message
+		if m.IsCommand() {
+			cmd := m.Command()
+			b.processCommand(cmd, m)
+			return
+		}
+
+		b.processMessage(m)
+
+	default:
+		// return a help message?
+	}
+}
+
+// Generic, non-command message.
+func (b *Bot) processMessage(msg *tgbotapi.Message) {
+	// TODO: send help message
+}
+
+func (b *Bot) processCommand(endpoint string, msg *tgbotapi.Message) {
+	h, ok := b.handlers[endpoint]
+	if !ok {
+		// TODO: send help message; no such command
+		return
+	}
+
+	h(msg)
 }
