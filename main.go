@@ -7,13 +7,14 @@ import (
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api"
 	"github.com/siktro/tg-ip-bot/internal/bot"
+	"github.com/siktro/tg-ip-bot/internal/commands"
 	log "github.com/sirupsen/logrus"
 )
 
 // TODO: outsource into run func to catch errors easier
 func main() {
 	if err := run(); err != nil {
-		log.Fatalf("%v", err)
+		log.Fatalf("Initialization error: %v", err)
 	}
 }
 
@@ -39,24 +40,32 @@ func run() error {
 		ipstackToken: os.Getenv("IPSTACK_TOKEN"),
 	}
 
-	// logger := log.New()
+	logger := log.New()
+
+	// TODO: Setup logging goroutins error channel
+
+	// === Start DB.
 
 	// === Start bot.
 
 	b, err := bot.NewBot(bot.Config{
-		Token: config.tgToken,
-		Debug: true,
+		Token:        config.tgToken,
+		Debug:        false,
+		Logger:       logger,
+		WorkersLimit: 1,
 	})
 
 	if err != nil {
 		return err
 	}
 
-	b.Handle("/start", func(m *tgbotapi.Message) {
+	cm := commands.NewManager(b, logger)
 
-	})
+	b.Handle("start", cm.Start)
 
 	updateConfig := tgbotapi.NewUpdate(0)
+	updateConfig.Timeout = 60
+
 	return b.ListenAndServe(updateConfig)
 }
 
@@ -67,7 +76,7 @@ func loadEnvsFromFile(path string) error {
 		return err
 	}
 
-	r, err := regexp.Compile(`(\w+)\s*=\s*(\w+)`)
+	r, err := regexp.Compile(`(\w+)\s*=\s*(\S+)`)
 	if err != nil {
 		return err
 	}

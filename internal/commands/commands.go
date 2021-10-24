@@ -1,31 +1,20 @@
 package commands
 
-import tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api"
+import (
+	"github.com/siktro/tg-ip-bot/internal/bot"
+	"github.com/sirupsen/logrus"
+)
 
-type Command func(*tgbotapi.Message)
+type CommandManager struct {
+	logger *logrus.Logger
+	bot    *bot.Bot
+	// db ...
+}
 
-func makeCommands(h *Handler) map[string]Command {
-	m := map[string]Command{
-		"/start": nil,
-		"/ping":  h.Ping,
+func NewManager(bot *bot.Bot, logger *logrus.Logger) *CommandManager {
+	m := &CommandManager{
+		bot:    bot,
+		logger: logger,
 	}
 	return m
 }
-
-/*
-TODO:
-	Telegram basic commands:
-		- /start
-		- /help
-		- /settings
-	Required commands:
-		(User)
-		- /lookup
-		- /history
-
-		(Admin)
-		- /broadcast
-		- /info
-		- /hist_by_id
-		- /del_records
-*/
