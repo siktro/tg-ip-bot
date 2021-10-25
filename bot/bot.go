@@ -7,19 +7,23 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-type CommandHandler func(*tgbotapi.Message)
+type UpdateHandler interface {
+	ProcessUpdate(*Bot, *tgbotapi.Update)
+}
 
 type Bot struct {
 	*tgbotapi.BotAPI
-	cfg      *Config
-	handlers map[string]CommandHandler
+	cfg *Config
+
+	handler UpdateHandler
 }
 
 type Config struct {
 	// Telegram bot token.
-	Token  string
-	Debug  bool
-	Logger *logrus.Logger
+	Token   string
+	Debug   bool
+	Logger  *logrus.Logger
+	Handler UpdateHandler
 
 	// The number of goroutines processing messages.
 	WorkersLimit int
@@ -37,22 +41,17 @@ func NewBot(cfg Config) (*Bot, error) {
 			Error("failed to initialize/authorize bot;")
 		return nil, err
 	}
-
 	api.Debug = cfg.Debug
 
 	return &Bot{
-		BotAPI:   api,
-		cfg:      &cfg,
-		handlers: make(map[string]CommandHandler),
+		BotAPI:  api,
+		cfg:     &cfg,
+		handler: cfg.Handler,
 	}, nil
 }
 
 func (b *Bot) Config() *Config {
 	return b.cfg
-}
-
-func (b *Bot) Handle(endpoint string, fn CommandHandler) {
-	b.handlers[endpoint] = fn
 }
 
 func (b *Bot) ListenAndServe(updateCfg tgbotapi.UpdateConfig) error {
@@ -77,46 +76,13 @@ func (b *Bot) ListenAndServe(updateCfg tgbotapi.UpdateConfig) error {
 		go func(upd tgbotapi.Update) {
 			// TODO: create ctx and a new logger for goroutine
 			// TODO: add recover if goroutine panics
+			b.handler.ProcessUpdate(b, &upd)
 			defer func() {
 				<-limitCh
 			}()
-			b.processUpdate(upd)
+			// b.handler.
 		}(update)
 	}
 
 	return nil
-}
-
-func (b *Bot) processUpdate(upd tgbotapi.Update) {
-	switch {
-	case upd.Message != nil:
-		m := upd.Message
-		if m.IsCommand() {
-			cmd := m.Command()
-			b.processCommand(cmd, m)
-			return
-		}
-
-		b.processMessage(m)
-
-	default:
-		// return a help message?
-	}
-}
-
-// Generic, non-command message.
-func (b *Bot) processMessage(msg *tgbotapi.Message) {
-	// TODO: send help message
-}
-
-func (b *Bot) processCommand(endpoint string, msg *tgbotapi.Message) {
-	h, ok := b.handlers[endpoint]
-	if !ok {
-		// TODO: send help message; no such command
-		b.cfg.Logger.Println("didn't find callback")
-		return
-	}
-
-	b.cfg.Logger.Println("found callback")
-	h(msg)
 }

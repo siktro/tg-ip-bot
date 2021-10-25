@@ -6,8 +6,9 @@ import (
 	"regexp"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api"
-	"github.com/siktro/tg-ip-bot/internal/bot"
-	"github.com/siktro/tg-ip-bot/internal/commands"
+	"github.com/siktro/tg-ip-bot/bot"
+	"github.com/siktro/tg-ip-bot/endpoints"
+	"github.com/siktro/tg-ip-bot/mux"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -48,21 +49,22 @@ func run() error {
 
 	// === Start bot.
 
+	endpointMng := endpoints.NewManager(logger)
+	endpointMux := mux.NewEndpointMux(logger)
+	endpointMux.Handle("start", endpointMng.StartCommand())
+
 	b, err := bot.NewBot(bot.Config{
-		Token:        config.tgToken,
-		Debug:        false,
-		Logger:       logger,
+		Token:   config.tgToken,
+		Debug:   false,
+		Logger:  logger,
+		Handler: endpointMux,
+
 		WorkersLimit: 1,
 	})
 
 	if err != nil {
 		return err
 	}
-
-	cm := commands.NewManager(b, logger)
-
-	b.Handle("start", cm.Start)
-
 	updateConfig := tgbotapi.NewUpdate(0)
 	updateConfig.Timeout = 60
 
